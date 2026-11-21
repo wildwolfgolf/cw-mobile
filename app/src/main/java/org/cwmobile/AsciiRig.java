@@ -27,17 +27,23 @@ final class AsciiRig implements Rig {
 
     Wire wire() { return wire; }
 
-    private boolean yaesu() { return profile == RigProfile.FT991A; }
+    private boolean yaesu() { return profile.isYaesu(); }
     private boolean wolf() { return profile == RigProfile.WOLF2; }
 
     @Override public void identify() throws IOException {
-        String expected = yaesu() ? "0670" : wolf() ? "019" : "023";
+        String expected;
+        switch (profile) {
+            case FT891: expected = "0650"; break;
+            case FT991A: expected = "0670"; break;
+            case WOLF2: expected = "019"; break;
+            default: expected = "023";
+        }
         if (!query("ID", 450).equals(expected)) throw new IOException("Ответ CAT не соответствует " + profile.label + ".");
         if (wolf()) status();
     }
 
     @Override public long frequency() throws IOException {
-        // The Yaesu FT-991A uses A as its receive VFO. Kenwood IF reports the displayed frequency.
+        // The Yaesu profiles use VFO A as the receive VFO. Kenwood IF reports the displayed frequency.
         return yaesu() ? decimal(query("FA", 330), 9) : status().frequency;
     }
 
@@ -87,12 +93,18 @@ final class AsciiRig implements Rig {
     }
 
     @Override public boolean split() throws IOException {
+        if (profile == RigProfile.FT891) {
+            String answer = query("ST", 250);
+            if (!answer.matches("[012]")) throw invalid("ST");
+            return !answer.equals("0");
+        }
         return yaesu() ? flag(query("FT", 250)) : status().split;
     }
 
     @Override public void split(boolean enabled) throws IOException {
         if (yaesu() || wolf()) {
-            write("FT" + (enabled ? "1" : "0"));
+            String command = profile == RigProfile.FT891 ? "ST" : "FT";
+            write(command + (enabled ? "1" : "0"));
         } else {
             int vfo = status().vfo;
             if (vfo > 1) throw new IOException("Выберите VFO A или B.");
@@ -128,7 +140,11 @@ final class AsciiRig implements Rig {
     @Override public void verifyAudioTx() throws IOException {
         Rig.super.verifyAudioTx();
         if (!profile.txMode.equals(mode())) throw new IOException("Для TX выберите " + profile.txMode + ".");
-        if (yaesu()) {
+        if (profile == RigProfile.FT891) {
+            if (!query("EX0809", 260).equals("1") || !query("EX0812", 260).equals("0")) {
+                throw new IOException("На FT-891 установите 08-09 DATA IN SELECT = REAR и 08-12 DATA BFO = USB.");
+            }
+        } else if (profile == RigProfile.FT991A) {
             if (!query("EX070", 260).equals("1") || !query("EX072", 260).equals("2")) {
                 throw new IOException("На FT-991A установите DATA IN SELECT = REAR и DATA PORT SELECT = USB.");
             }

@@ -7,6 +7,8 @@ enum RigProfile {
             "USB-D USB LSB-D LSB CW CWR AM FM"),
     FT991A("Yaesu FT-991A", 38400, 2, 0, 30_000, 470_000_000L, "DATA-USB",
             "DATA-USB USB DATA-LSB LSB CW CWR AM FM"),
+    FT891("Yaesu FT-891", 4800, 2, 0, 30_000, 56_000_000L, "DATA-USB",
+            "DATA-USB USB DATA-LSB LSB CW CWR AM FM"),
     TS590SG("Kenwood TS-590SG", 115200, 1, 0, 30_000, 60_000_000L, "USB-D",
             "USB-D USB LSB-D LSB CW CWR AM FM"),
     WOLF2("Wolf 2 · TS-2000", 115200, 1, 0, 1, 2_700_000_000L, "CW",
@@ -35,6 +37,7 @@ enum RigProfile {
             case G90:
             case IC7300: return new Civ(this, address, wire, log);
             case FT991A:
+            case FT891:
             case TS590SG:
             case WOLF2: return new AsciiRig(this, wire, log);
             default: throw new IllegalStateException("Профиль работает без CAT.");
@@ -43,13 +46,16 @@ enum RigProfile {
 
     boolean supportsVfo(Rig.Vfo vfo) {
         switch (this) {
-            case FT991A: return vfo == Rig.Vfo.SWAP;
+            case FT991A:
+            case FT891: return vfo == Rig.Vfo.SWAP;
             case TS590SG:
             case WOLF2: return vfo != Rig.Vfo.SWAP;
             case AUDIO: return false;
             default: return true;
         }
     }
+
+    boolean isYaesu() { return this == FT991A || this == FT891; }
 
     void validateFrequency(long hz) {
         if (hz < minHz || hz > maxHz) {

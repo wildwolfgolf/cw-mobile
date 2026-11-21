@@ -690,7 +690,7 @@ public final class MainActivity extends Activity {
         address = prefs.getInt(profileKey(selected, "address"), selected.address);
         baud = prefs.getInt(profileKey(selected, "baud"), selected.baud);
         stopBits = prefs.getInt(profileKey(selected, "stopBits"), selected.stopBits);
-        hardwareFlow = prefs.getBoolean(profileKey(selected, "flow"), false) &&
+        hardwareFlow = prefs.getBoolean(profileKey(selected, "flow"), selected == RigProfile.FT891) &&
                 selected != RigProfile.WOLF2 && selected != RigProfile.G90 && selected != RigProfile.IC7300;
         for (int i = 0; i < BANDS.length; i++) {
             lastFrequency[i] = prefs.getLong(profileKey(selected, "band" + i), BANDS[i][3]);
@@ -765,8 +765,8 @@ public final class MainActivity extends Activity {
             stops.setSelection((active ? stopBits : prefs.getInt(profileKey(model, "stopBits"), model.stopBits)) - 1);
             int addrValue = active ? address : prefs.getInt(profileKey(model, "address"), model.address);
             addr.setText(String.format(Locale.ROOT, "%02X", addrValue));
-            flow.setChecked(active ? hardwareFlow : prefs.getBoolean(profileKey(model, "flow"), false));
-            flow.setVisibility(model == RigProfile.TS590SG || model == RigProfile.FT991A ? View.VISIBLE : View.GONE);
+            flow.setChecked(active ? hardwareFlow : prefs.getBoolean(profileKey(model, "flow"), model == RigProfile.FT891));
+            flow.setVisibility(model == RigProfile.TS590SG || model.isYaesu() ? View.VISIBLE : View.GONE);
             boolean civ = model.address != 0;
             civOptions.setVisibility(civ ? View.VISIBLE : View.GONE);
             catSettings.setVisibility(model == RigProfile.AUDIO ? View.GONE : View.VISIBLE);
@@ -775,6 +775,7 @@ public final class MainActivity extends Activity {
             selectAudio(tx, outputs, active ? txKey : prefs.getString(profileKey(model, "tx"), ""), active ? txDevice : -1);
             hint.setText(model == RigProfile.WOLF2 ? "CAT Type: TS-2000. Для TX нужны DTR = CW и RTS = PTT."
                     : model == RigProfile.AUDIO ? "Автовыбор: один USB-аудиовход или встроенный микрофон."
+                    : model == RigProfile.FT891 ? "CAT: USB Enhanced. Звук: внешний USB-аудиоинтерфейс к RTTY/DATA."
                     : "Скорость и формат должны совпадать с настройками CAT трансивера.");
         };
         radioModel.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {

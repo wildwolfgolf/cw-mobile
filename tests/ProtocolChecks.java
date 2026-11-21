@@ -17,9 +17,10 @@ public final class ProtocolChecks {
         testCiv(RigProfile.G90);
         testCiv(RigProfile.IC7300);
         testYaesu();
+        testFt891();
         testKenwood();
         testWolf();
-        System.out.println("Passed: 50 decoder cases and 5 CAT profiles, including TX preflight and Wolf 2 line cleanup.");
+        System.out.println("Passed: 50 decoder cases and 6 CAT profiles, including TX preflight and Wolf 2 line cleanup.");
     }
 
     private static void testDecoder() {
@@ -90,6 +91,46 @@ public final class ProtocolChecks {
         rig.split(false);
         rig.verifyAudioTx();
         rig.vfo(Rig.Vfo.SWAP);
+        rig.ptt(true);
+        equal("TX1", wire.lastWrite);
+        equal(true, rig.transmitting());
+        rig.ptt(false);
+        equal("TX0", wire.lastWrite);
+        equal(false, rig.transmitting());
+        equal(46, rig.meter(Rig.Meter.SWR, 120));
+    }
+
+    private static void testFt891() throws Exception {
+        DemoAscii wire = new DemoAscii(RigProfile.FT891);
+        Rig rig = RigProfile.FT891.create(0, wire, QUIET);
+        rig.identify();
+        rejects(() -> RigProfile.FT991A.create(0, wire, QUIET).identify());
+        equal(7_030_000L, rig.frequency());
+        rig.frequency(50_100_000L);
+        equal("FA050100000", wire.lastWrite);
+        equal(50_100_000L, rig.frequency());
+        rig.mode("CW");
+        equal("MD03", wire.lastWrite);
+        rejects(rig::verifyAudioTx);
+        rig.mode("DATA-USB");
+        equal("MD0C", wire.lastWrite);
+        rig.split(true);
+        equal("ST1", wire.lastWrite);
+        rejects(rig::verifyAudioTx);
+        wire.splitPlus = true;
+        equal(true, rig.split());
+        rejects(rig::verifyAudioTx);
+        rig.split(false);
+        equal("ST0", wire.lastWrite);
+        wire.rear = false;
+        rejects(rig::verifyAudioTx);
+        wire.rear = true;
+        wire.dataUsb = false;
+        rejects(rig::verifyAudioTx);
+        wire.dataUsb = true;
+        rig.verifyAudioTx();
+        rig.vfo(Rig.Vfo.SWAP);
+        equal("SV", wire.lastWrite);
         rig.ptt(true);
         equal("TX1", wire.lastWrite);
         equal(true, rig.transmitting());
@@ -229,6 +270,7 @@ public final class ProtocolChecks {
         char mode;
         int vfo, marks;
         boolean data = true, split, tx, key, xit, failKey, usb = true;
+        boolean splitPlus, rear = true, dataUsb = true;
         String lastWrite;
 
         DemoAscii(RigProfile profile) {
@@ -236,7 +278,8 @@ public final class ProtocolChecks {
             mode = yaesu() ? 'C' : wolf() ? '3' : '2';
         }
 
-        private boolean yaesu() { return profile == RigProfile.FT991A; }
+        private boolean yaesu() { return profile == RigProfile.FT991A || ft891(); }
+        private boolean ft891() { return profile == RigProfile.FT891; }
         private boolean wolf() { return profile == RigProfile.WOLF2; }
 
         @Override public boolean canKey() { return wolf(); }
@@ -260,7 +303,7 @@ public final class ProtocolChecks {
             switch (cmd) {
                 case "ID":
                     reply("ID"); // Echo of the query cannot satisfy the reply.
-                    reply("ID" + (yaesu() ? "0670" : wolf() ? "019" : "023")); return;
+                    reply("ID" + (ft891() ? "0650" : yaesu() ? "0670" : wolf() ? "019" : "023")); return;
                 case "FA": reply("FA" + field(9)); return;
                 case "FB": reply("FB" + field(9)); return;
                 case "IF":
@@ -270,12 +313,22 @@ public final class ProtocolChecks {
                 case "MD": reply("MD" + mode); return;
                 case "MD0": reply("MD0" + mode); return;
                 case "DA": reply(data ? "DA1" : "DA0"); return;
-                case "FT": reply(split ? "FT1" : "FT0"); return;
+                case "FT":
+                    if (ft891()) throw new AssertionError("FT-891 uses ST for SPLIT");
+                    reply(split ? "FT1" : "FT0"); return;
+                case "ST":
+                    equal(true, ft891());
+                    reply(splitPlus ? "ST2" : split ? "ST1" : "ST0");
+                    return;
                 case "TX": reply(tx ? "TX1" : "TX0"); return;
                 case "RM6": reply("RM6046010"); return;
                 case "RM": reply("RM20013"); reply("RM10010"); reply("RM30012"); return;
                 case "EX0690000": reply(cmd + (usb ? "1" : "0")); return;
-                case "EX070": reply("EX0701"); return;
+                case "EX0809": reply(rear ? "EX08091" : "EX08090"); return;
+                case "EX0812": reply(dataUsb ? "EX08120" : "EX08121"); return;
+                case "EX070":
+                    if (ft891()) throw new AssertionError("FT-991A-specific command");
+                    reply("EX0701"); return;
                 case "EX072": reply(usb ? "EX0722" : "EX0721"); return;
             }
             lastWrite = cmd;
@@ -283,6 +336,7 @@ public final class ProtocolChecks {
             else if (cmd.startsWith("MD")) mode = cmd.charAt(cmd.length() - 1);
             else if (cmd.startsWith("DA")) data = cmd.endsWith("1");
             else if (cmd.startsWith("FT")) split = wolf() || yaesu() ? cmd.endsWith("1") : true;
+            else if (cmd.startsWith("ST")) { equal(true, ft891()); split = cmd.endsWith("1"); splitPlus = false; }
             else if (cmd.startsWith("FR") || cmd.startsWith("VS")) { vfo = cmd.charAt(2) - '0'; split = false; }
             else if (cmd.equals("TX1") || cmd.equals("TX0") || cmd.equals("RX")) tx = cmd.equals("TX1");
             else if (!cmd.equals("SV")) throw new AssertionError("Unexpected ASCII CAT " + cmd);
